@@ -84,9 +84,31 @@ const documentSchema = new mongoose.Schema({
   }]
 }, { timestamps: true });
 
+const cursoSchema = new mongoose.Schema({
+  titulo: { type: String, required: true },
+  duracion: { type: Number, default: 0 },
+  contexto: String,
+  imagenes: [{
+    data: String
+  }],
+  renglones: [String],
+  preguntas: [{
+    texto: String,
+    opciones: [String],
+    respuestaIdx: Number
+  }],
+  publicado: { type: Boolean, default: false },
+  autor: String,
+  autorEmail: String,
+  autorFoto: String,
+  fechaCreacion: { type: Date, default: Date.now },
+  usuariosIngresados: [String]
+}, { timestamps: true });
+
 const User = mongoose.model('User', userSchema);
 const Review = mongoose.model('Review', reviewSchema);
 const Document = mongoose.model('Document', documentSchema);
+const Curso = mongoose.model('Curso', cursoSchema);
 
 async function upsertUser(userObj) {
   if (!userObj || !userObj.email) return null;
@@ -412,6 +434,173 @@ app.put('/api/documents/:id', async (req, res) => {
   } catch (err) {
     console.error('Error actualizando documento:', err);
     res.status(500).json({ ok: false, error: err.message || 'Error al actualizar documento' });
+  }
+});
+
+// GET TODOS LOS CURSOS PUBLICADOS
+app.get('/api/cursos', async (req, res) => {
+  try {
+    const page = Math.max(1, parseInt(req.query.page || '1'));
+    const limit = Math.max(1, parseInt(req.query.limit || '10'));
+    const skip = (page - 1) * limit;
+    
+    const total = await Curso.countDocuments({ publicado: true }).exec();
+    const cursos = await Curso.find({ publicado: true })
+      .sort({ fechaCreacion: -1 })
+      .skip(skip)
+      .limit(limit)
+      .lean()
+      .exec();
+    
+    res.json({ ok: true, cursos, total });
+  } catch (err) {
+    console.error('Error obteniendo cursos:', err);
+    res.status(500).json({ ok: false, error: 'Error al obtener cursos' });
+  }
+});
+
+// GET CURSO POR ID
+app.get('/api/cursos/:id', async (req, res) => {
+  try {
+    const curso = await Curso.findById(req.params.id).lean().exec();
+    if (!curso) return res.status(404).json({ ok: false, error: 'Curso no encontrado' });
+    res.json({ ok: true, curso });
+  } catch (err) {
+    console.error('Error obteniendo curso:', err);
+    res.status(500).json({ ok: false, error: 'Error al obtener curso' });
+  }
+});
+
+// CREAR CURSO
+app.post('/api/cursos', async (req, res) => {
+  try {
+    const { titulo, duracion, contexto, imagenes, renglones, preguntas, publicado, autor, autorEmail, autorFoto } = req.body;
+    
+    if (!titulo || !autorEmail) {
+      return res.status(400).json({ ok: false, error: 'Faltan datos requeridos: titulo y autorEmail' });
+    }
+
+    let user = await User.findOne({ email: autorEmail }).lean().exec();
+    if (!user) {
+      await upsertUser({
+        email: autorEmail,
+        name: autor || '',
+        picture: autorFoto || '',
+        registeredWith: 'google',
+        createdAt: Date.now()
+      });
+    }
+
+    const curso = new Curso({
+      titulo,
+      duracion: duracion || 0,
+      contexto: contexto || '',
+      imagenes: imagenes || [],
+      renglones: renglones || [],
+      preguntas: preguntas || [],
+      publicado: publicado || false,
+      autor: autor || 'Autor desconocido',
+      autorEmail,
+      autorFoto: autorFoto || '',
+      usuariosIngresados: []
+    });
+
+    await curso.save();
+    res.json({ ok: true, curso, id: curso._id });
+  } catch (err) {
+    console.error('Error creando curso:', err);
+    res.status(500).json({ ok: false, error: err.message || 'Error al crear curso' });
+  }
+});
+
+// EDITAR CURSO
+app.put('/api/cursos/:id', async (req, res) => {
+  try {
+    const cursoId = req.params.id;
+    const { titulo, duracion, contexto, imagenes, renglones, preguntas, publicado, autorEmail } = req.body;
+
+    if (!autorEmail) {
+      return res.status(400).json({ ok: false, error: 'Faltan datos requeridos: autorEmail' });
+    }
+
+    const curso = await Curso.findById(cursoId);
+    if (!curso) {
+      return res.status(404).json({ ok: false, error: 'Curso no encontrado' });
+    }
+
+    // Validar que el solicitante sea el autor
+    if (curso.autorEmail !== autorEmail) {
+      return res.status(403).json({ ok: false, error: 'No autorizado para editar este curso' });
+    }
+
+    curso.titulo = titulo || curso.titulo;
+    curso.duracion = duracion !== undefined ? duracion : curso.duracion;
+    curso.contexto = contexto || curso.contexto;
+    curso.imagenes = imagenes || curso.imagenes;
+    curso.renglones = renglones || curso.renglones;
+    curso.preguntas = preguntas || curso.preguntas;
+    curso.publicado = publicado !== undefined ? publicado : curso.publicado;
+
+    await curso.save();
+    res.json({ ok: true, curso });
+  } catch (err) {
+    console.error('Error actualizando curso:', err);
+    res.status(500).json({ ok: false, error: err.message || 'Error al actualizar curso' });
+  }
+});
+
+// ELIMINAR CURSO
+app.delete('/api/cursos/:id', async (req, res) => {
+  try {
+    const cursoId = req.params.id;
+    const { autorEmail } = req.body;
+
+    if (!autorEmail) {
+      return res.status(400).json({ ok: false, error: 'Faltan datos requeridos: autorEmail' });
+    }
+
+    const curso = await Curso.findById(cursoId);
+    if (!curso) {
+      return res.status(404).json({ ok: false, error: 'Curso no encontrado' });
+    }
+
+    // Validar que el solicitante sea el autor
+    if (curso.autorEmail !== autorEmail) {
+      return res.status(403).json({ ok: false, error: 'No autorizado para eliminar este curso' });
+    }
+
+    await Curso.findByIdAndDelete(cursoId);
+    res.json({ ok: true, message: 'Curso eliminado' });
+  } catch (err) {
+    console.error('Error eliminando curso:', err);
+    res.status(500).json({ ok: false, error: err.message || 'Error al eliminar curso' });
+  }
+});
+
+// REGISTRAR USUARIO QUE INGRESÓ AL CURSO
+app.post('/api/cursos/:id/usuario', async (req, res) => {
+  try {
+    const cursoId = req.params.id;
+    const { userId } = req.body;
+
+    if (!userId) {
+      return res.status(400).json({ ok: false, error: 'userId es requerido' });
+    }
+
+    const curso = await Curso.findById(cursoId);
+    if (!curso) {
+      return res.status(404).json({ ok: false, error: 'Curso no encontrado' });
+    }
+
+    if (!curso.usuariosIngresados.includes(userId)) {
+      curso.usuariosIngresados.push(userId);
+      await curso.save();
+    }
+
+    res.json({ ok: true, usuariosCount: curso.usuariosIngresados.length });
+  } catch (err) {
+    console.error('Error registrando usuario:', err);
+    res.status(500).json({ ok: false, error: err.message || 'Error al registrar usuario' });
   }
 });
 
