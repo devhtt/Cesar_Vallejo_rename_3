@@ -1,0 +1,381 @@
+<!doctype html>
+<html lang="es">
+<head>
+	<meta charset="utf-8" />
+	<meta name="viewport" content="width=device-width,initial-scale=1" />
+	<title>Crear / Editar curso</title>
+	<style>
+		body{font-family:Arial,Helvetica,sans-serif;margin:20px}
+		form{max-width:900px;background:#fff;padding:16px;border-radius:6px;border:1px solid #e1e1e1}
+		label{display:block;margin-top:10px;font-weight:600}
+		input[type="text"], input[type="number"], textarea{width:100%;padding:8px;border:1px solid #ccc;border-radius:4px;box-sizing:border-box}
+		.section{margin-top:20px;padding:12px;background:#f9f9f9;border-left:4px solid #0078d4;border-radius:4px}
+		.section h3{margin:0 0 12px 0;color:#0078d4}
+		.row{display:flex;gap:8px;align-items:center;margin-top:12px}
+		.button{padding:8px 12px;border-radius:4px;border:1px solid #0078d4;background:#0078d4;color:#fff;cursor:pointer}
+		.button.secondary{background:#f3f3f3;color:#222;border-color:#ccc}
+		.button.danger{background:#d13438;border-color:#d13438}
+		.button.small{padding:6px 10px;font-size:0.9rem}
+		.item{background:#fff;padding:10px;border:1px solid #ddd;border-radius:4px;margin-top:8px;display:flex;justify-content:space-between;align-items:center}
+		.item input{flex:1;margin-right:8px}
+		.question-item{background:#f0f0f0;padding:12px;border:1px solid #ddd;border-radius:4px;margin-top:8px}
+		.question-item > div{margin-bottom:12px}
+		.options-list{background:#fff;padding:8px;border-radius:4px;border:1px solid #e0e0e0;margin-top:8px}
+		.option-item{display:flex;align-items:center;gap:8px;padding:8px;background:#fff;border:1px solid #ddd;border-radius:4px;margin-top:6px}
+		.option-item input[type="radio"]{cursor:pointer}
+		.option-item input[type="text"]{flex:1}
+		.image-item{display:flex;flex-direction:column;gap:6px}
+		.image-preview{max-width:100px;max-height:100px;border-radius:4px;object-fit:cover}
+		.profile-section{background:#e3f2fd;padding:12px;border-radius:4px;margin-bottom:16px;display:flex;align-items:center;gap:12px}
+		.profile-avatar{width:50px;height:50px;border-radius:50%;background:#0078d4;color:#fff;display:flex;align-items:center;justify-content:center;font-weight:600;overflow:hidden}
+		.profile-avatar img{width:100%;height:100%;object-fit:cover}
+		.profile-info{flex:1}
+		.profile-info p{margin:2px 0;font-size:0.9rem}
+	</style>
+</head>
+<body>
+	<a class="button secondary" href="cursos.html" style="margin-bottom:16px">← Volver a cursos</a>
+	<h1>Crear / Editar curso</h1>
+
+	<!-- Sección de perfil del autor (opcional) -->
+	<div class="profile-section" id="profileSection" style="display:none">
+		<div class="profile-avatar" id="profileAvatar">U</div>
+		<div class="profile-info">
+			<p><strong>Autor:</strong> <span id="authorName">Usuario</span></p>
+			<p style="font-size:0.85rem;color:#666" id="authorEmail"></p>
+		</div>
+	</div>
+
+	<form id="courseForm">
+		<!-- Información básica -->
+		<div class="section">
+			<h3>Información básica</h3>
+			<label for="titulo">Título del curso</label>
+			<input id="titulo" name="titulo" type="text" required />
+
+			<label for="duracion">Duración (minutos)</label>
+			<input id="duracion" name="duracion" type="number" min="1" placeholder="30" />
+
+			<label for="contexto">Contexto / Descripción</label>
+			<textarea id="contexto" name="contexto" rows="4" placeholder="Explica de qué trata el curso..."></textarea>
+		</div>
+
+		<!-- Imágenes como opciones -->
+		<div class="section">
+			<h3>Imágenes como opciones</h3>
+			<p style="font-size:0.9rem;color:#666">Agrega URLs de imágenes o sube desde tu dispositivo</p>
+			<div id="imagesList"></div>
+			<div class="row">
+				<button class="button small" type="button" id="addImageBtn">+ Agregar por URL</button>
+				<input type="file" id="imageFileInput" accept="image/*" style="display:none" />
+				<button class="button small" type="button" id="uploadImageBtn">+ Subir imagen</button>
+			</div>
+		</div>
+
+		<!-- Renglones/Filas como opciones -->
+		<div class="section">
+			<h3>Renglones / Filas como opciones</h3>
+			<p style="font-size:0.9rem;color:#666">Agrega renglones de texto que serán opciones del curso</p>
+			<div id="rowsList"></div>
+			<button class="button small" type="button" id="addRowBtn">+ Agregar renglón</button>
+		</div>
+
+		<!-- Preguntas -->
+		<div class="section">
+			<h3>Preguntas</h3>
+			<div id="questionsList"></div>
+			<button class="button small" type="button" id="addQuestionBtn">+ Agregar pregunta</button>
+		</div>
+
+		<!-- Publicar -->
+		<label style="margin-top:20px"><input id="publicado" name="publicado" type="checkbox" /> Publicar ahora</label>
+
+		<div class="row" style="margin-top:20px">
+			<button class="button" type="submit">Guardar curso</button>
+			<a class="button secondary" href="cursos.html">Cancelar</a>
+		</div>
+	</form>
+</body>
+
+<script>
+	// Helper: obtener query param
+	function getQueryParam(name){
+		const params = new URLSearchParams(location.search);
+		return params.get(name);
+	}
+
+	// Estado global
+	let imagesList = [];
+	let rowsList = [];
+	let questionsList = [];
+	let currentUser = null;
+
+	// Obtener usuario actual o crear uno genérico
+	function loadCurrentUser(){
+		const stored = localStorage.getItem('currentUser');
+		if (stored) {
+			try {
+				currentUser = JSON.parse(stored);
+				showProfileSection();
+			} catch(e) {
+				console.error('Error parsing user:', e);
+				currentUser = null;
+			}
+		}
+	}
+
+	function showProfileSection(){
+		if (currentUser) {
+			document.getElementById('profileSection').style.display = 'flex';
+			document.getElementById('authorName').textContent = currentUser.name || 'Usuario';
+			document.getElementById('authorEmail').textContent = currentUser.email || '';
+			const avatar = document.getElementById('profileAvatar');
+			if (currentUser.picture) {
+				avatar.innerHTML = `<img src="${currentUser.picture}" alt="${currentUser.name}" />`;
+			} else {
+				avatar.textContent = (currentUser.name || 'U').charAt(0).toUpperCase();
+			}
+		}
+	}
+
+	// Renderizar imágenes
+	function renderImages(){
+		const container = document.getElementById('imagesList');
+		container.innerHTML = '';
+		imagesList.forEach((img, idx) => {
+			const item = document.createElement('div');
+			item.className = 'item';
+			item.innerHTML = `
+				<div class="image-item" style="flex:1">
+					<input type="text" value="${escapeHtml(img.data)}" placeholder="https://... o imagen local" style="width:100%;padding:8px;border:1px solid #ccc;border-radius:4px;box-sizing:border-box" />
+					${img.data.startsWith('data:image') ? `<img src="${img.data}" class="image-preview" alt="preview" />` : ''}
+				</div>
+				<button class="button danger small" type="button" data-idx="${idx}">Eliminar</button>
+			`;
+			const input = item.querySelector('input');
+			input.addEventListener('change', () => { imagesList[idx].data = input.value; renderImages(); });
+			item.querySelector('button').addEventListener('click', (e) => {
+				e.preventDefault();
+				imagesList.splice(idx, 1);
+				renderImages();
+			});
+			container.appendChild(item);
+		});
+	}
+
+	// Renderizar renglones
+	function renderRows(){
+		const container = document.getElementById('rowsList');
+		container.innerHTML = '';
+		rowsList.forEach((row, idx) => {
+			const item = document.createElement('div');
+			item.className = 'item';
+			item.innerHTML = `
+				<input type="text" value="${escapeHtml(row)}" placeholder="Texto del renglón..." />
+				<button class="button danger small" type="button" data-idx="${idx}">Eliminar</button>
+			`;
+			const input = item.querySelector('input');
+			input.addEventListener('change', () => { rowsList[idx] = input.value; });
+			item.querySelector('button').addEventListener('click', (e) => {
+				e.preventDefault();
+				rowsList.splice(idx, 1);
+				renderRows();
+			});
+			container.appendChild(item);
+		});
+	}
+
+	// Renderizar preguntas
+	function renderQuestions(){
+		const container = document.getElementById('questionsList');
+		container.innerHTML = '';
+		questionsList.forEach((q, qIdx) => {
+			const questionItem = document.createElement('div');
+			questionItem.className = 'question-item';
+			questionItem.innerHTML = `
+				<div>
+					<label style="margin:0;display:block;font-size:0.9rem;font-weight:600">Pregunta ${qIdx + 1}</label>
+					<input type="text" value="${escapeHtml(q.texto)}" placeholder="¿Cuál es la pregunta?" class="q-text" style="margin-top:4px;width:100%;padding:8px;border:1px solid #ccc;border-radius:4px;box-sizing:border-box" />
+				</div>
+				<div>
+					<label style="margin:0;display:block;font-size:0.9rem;font-weight:600;margin-bottom:6px">Opciones</label>
+					<div class="options-list" id="optionsList-${qIdx}"></div>
+					<button class="button small" type="button" data-q-idx="${qIdx}" id="addOptionBtn-${qIdx}">+ Agregar opción</button>
+				</div>
+				<button class="button danger small" type="button" data-q-idx="${qIdx}" id="deleteQBtn-${qIdx}">Eliminar pregunta</button>
+			`;
+			
+			const textInput = questionItem.querySelector('.q-text');
+			textInput.addEventListener('change', () => { questionsList[qIdx].texto = textInput.value; });
+
+			// Renderizar opciones de esta pregunta
+			const optionsContainer = questionItem.querySelector(`#optionsList-${qIdx}`);
+			function renderOptions(){
+				optionsContainer.innerHTML = '';
+				(q.opciones || []).forEach((opt, oIdx) => {
+					const optItem = document.createElement('div');
+					optItem.className = 'option-item';
+					optItem.innerHTML = `
+						<input type="radio" name="correct-${qIdx}" value="${oIdx}" ${q.respuestaIdx === oIdx ? 'checked' : ''} />
+						<input type="text" value="${escapeHtml(opt)}" placeholder="Texto de la opción..." class="opt-text" />
+						<button class="button danger small" type="button" data-o-idx="${oIdx}">Eliminar</button>
+					`;
+					const radio = optItem.querySelector('input[type="radio"]');
+					const textOpt = optItem.querySelector('.opt-text');
+					radio.addEventListener('change', () => { questionsList[qIdx].respuestaIdx = oIdx; });
+					textOpt.addEventListener('change', () => { q.opciones[oIdx] = textOpt.value; });
+					optItem.querySelector('button').addEventListener('click', (e) => {
+						e.preventDefault();
+						q.opciones.splice(oIdx, 1);
+						if (q.respuestaIdx === oIdx) q.respuestaIdx = undefined;
+						renderOptions();
+					});
+					optionsContainer.appendChild(optItem);
+				});
+			}
+			renderOptions();
+
+			// Botón agregar opción
+			questionItem.querySelector(`#addOptionBtn-${qIdx}`).addEventListener('click', (e) => {
+				e.preventDefault();
+				if (!q.opciones) q.opciones = [];
+				q.opciones.push('');
+				renderOptions();
+			});
+
+			// Botón eliminar pregunta
+			questionItem.querySelector(`#deleteQBtn-${qIdx}`).addEventListener('click', (e) => {
+				e.preventDefault();
+				questionsList.splice(qIdx, 1);
+				renderQuestions();
+			});
+
+			container.appendChild(questionItem);
+		});
+	}
+
+	// Agregar imagen por URL
+	document.getElementById('addImageBtn').addEventListener('click', (e) => {
+		e.preventDefault();
+		imagesList.push({ data: '' });
+		renderImages();
+	});
+
+	// Subir imagen desde dispositivo
+	document.getElementById('uploadImageBtn').addEventListener('click', (e) => {
+		e.preventDefault();
+		document.getElementById('imageFileInput').click();
+	});
+
+	document.getElementById('imageFileInput').addEventListener('change', (e) => {
+		const file = e.target.files[0];
+		if (file) {
+			const reader = new FileReader();
+			reader.onload = (event) => {
+				imagesList.push({ data: event.target.result });
+				renderImages();
+			};
+			reader.readAsDataURL(file);
+		}
+	});
+
+	// Agregar renglón
+	document.getElementById('addRowBtn').addEventListener('click', (e) => {
+		e.preventDefault();
+		rowsList.push('');
+		renderRows();
+	});
+
+	// Agregar pregunta
+	document.getElementById('addQuestionBtn').addEventListener('click', (e) => {
+		e.preventDefault();
+		questionsList.push({ texto: '', opciones: [], respuestaIdx: undefined });
+		renderQuestions();
+	});
+
+	// Cargar curso existente
+	function loadCourseToForm(id){
+		const all = JSON.parse(localStorage.getItem('cursos') || '[]');
+		const c = all.find(x => String(x.id) === String(id));
+		if (!c) return;
+		document.getElementById('titulo').value = c.titulo || '';
+		document.getElementById('duracion').value = c.duracion || '';
+		document.getElementById('contexto').value = c.contexto || '';
+		document.getElementById('publicado').checked = !!c.publicado;
+		// Convertir imágenes antiguas (strings) al nuevo formato
+		imagesList = (c.imagenes || []).map(img => 
+			typeof img === 'string' ? { data: img } : img
+		);
+		rowsList = c.renglones || [];
+		questionsList = c.preguntas || [];
+		renderImages();
+		renderRows();
+		renderQuestions();
+	}
+
+	// Helper: escapar HTML
+	function escapeHtml(str){
+		if (!str) return '';
+		return String(str)
+			.replace(/&/g, '&amp;')
+			.replace(/</g, '&lt;')
+			.replace(/>/g, '&gt;')
+			.replace(/"/g, '&quot;')
+			.replace(/'/g, '&#39;');
+	}
+
+	// Guardar curso
+	document.getElementById('courseForm').addEventListener('submit', function(e){
+		e.preventDefault();
+		const titulo = document.getElementById('titulo').value.trim();
+		if (!titulo) { alert('El título es requerido'); return; }
+		const duracion = parseInt(document.getElementById('duracion').value) || 0;
+		const contexto = document.getElementById('contexto').value.trim();
+		const publicado = document.getElementById('publicado').checked;
+
+		const all = JSON.parse(localStorage.getItem('cursos') || '[]');
+		const editingId = getQueryParam('id');
+
+		// Si no hay usuario, usar valores por defecto
+		const autor = currentUser ? currentUser.name : 'Autor desconocido';
+		const autorEmail = currentUser ? currentUser.email : '';
+		const autorFoto = currentUser ? currentUser.picture : '';
+
+		const courseData = {
+			titulo,
+			duracion,
+			contexto,
+			imagenes: imagesList,
+			renglones: rowsList,
+			preguntas: questionsList,
+			publicado,
+			autor,
+			autorEmail,
+			autorFoto,
+			fechaCreacion: new Date().toISOString(),
+			usuariosIngresados: []
+		};
+
+		if (editingId) {
+			const idx = all.findIndex(x => String(x.id) === String(editingId));
+			if (idx >= 0) {
+				all[idx] = { ...all[idx], ...courseData, id: all[idx].id, usuariosIngresados: all[idx].usuariosIngresados || [] };
+			} else {
+				all.push({ id: Date.now(), ...courseData });
+			}
+		} else {
+			all.push({ id: Date.now(), ...courseData });
+		}
+
+		localStorage.setItem('cursos', JSON.stringify(all));
+		location.href = 'cursos.html';
+	});
+
+	// Inicialización
+	window.addEventListener('load', function(){
+		loadCurrentUser();
+		const id = getQueryParam('id');
+		if (id) loadCourseToForm(id);
+	});
+</script>
+</html>
